@@ -19,3 +19,14 @@ Host nas
 ```
 
 If you have configured [passwordless ssh login](https://linuxize.com/post/how-to-setup-passwordless-ssh-login/) for this host/server, clicking on the 'nas' host entry in ulauncher will open a terminal and log you in the server automatically.
+
+## Terminal Workarounds
+### Kitty
+Put this wrapper script in a file in your PATH and use it as terminal:
+```
+#!/usr/bin/env python
+import subprocess
+import sys
+
+subprocess.Popen("/usr/bin/kitty " + sys.argv[2], shell=True)
+```
