@@ -103,6 +103,7 @@ class KeywordQueryEventListener(EventListener):
         if extension.use_known_hosts == "True":
             hosts += extension.parse_known_hosts()
 
+        hosts = list(dict.fromkeys(hosts))
         hosts.sort()
 
         if arg is not None and len(arg) > 0:
