@@ -23,41 +23,70 @@ class SshExtension(Extension):
         self.subscribe(ItemEnterEvent, ItemEnterEventListener())
         self.subscribe(PreferencesUpdateEvent, PreferencesUpdateEventListener())
         self.subscribe(PreferencesEvent, PreferencesEventListener())
+        self.home = expanduser("~")
 
     def parse_ssh_config(self):
-        home = expanduser("~")
         hosts = []
+        index = -1
 
         try:
-            with open(home + "/.ssh/config", "r") as ssh_config:
-                for line in ssh_config:
-                    line_lc = line.lower()
-
-                    if line_lc.startswith("include"):
-                        path = (home + "/.ssh/" + (line_lc.strip("include")).strip())
-                        for fn in glob.iglob(path):
-                            if os.path.isfile(fn):
-                                with open(fn, "r") as cf:
-                                    for ln in cf:
-                                        lc = ln.lower()
-                                        if lc.startswith(
-                                                "host") and "*" not in lc and "keyalgorithms" not in lc:
-                                            hosts.append(lc.strip("host").strip("\n").strip())
-
-                    if line_lc.startswith("host") and "*" not in line_lc and "keyalgorithms" not in line_lc:
-                        hosts.append(line_lc.strip("host").strip("\n").strip())
+            with open(self.home + "/.ssh/config", "r") as ssh_config:
+                lines = ssh_config.readlines()
+                hosts = self.parse_with_includes(lines, [])
         except:
             logger.debug("ssh config not found!")
 
         return hosts
 
+    def parse_with_includes(self, lines, hosts = []):
+        tmp_hosts = []
+        includes = self.parse_config(lines, tmp_hosts)
+
+        for host in tmp_hosts:
+            hosts.append(host)
+
+        for inc in includes:
+            self.parse_with_includes(self.read_include(inc), hosts)
+
+        return hosts
+
+    def parse_config(self, ssh_config, hosts):
+        index = -1
+        includes = []
+
+        for line in ssh_config:
+            line_lc = line.lower().strip().strip("\n")
+
+            if self.is_host_line(line_lc):
+                hosts.append({
+                    "host": line_lc[5:]
+                })
+                index += 1
+
+            if line_lc.startswith("hostname "):
+                hosts[index]["hostname"] = line_lc[9:]
+
+            if line_lc.startswith("include "):
+                includes.append(line[8:].strip().strip("\n"))
+
+        return includes
+
+    def read_include(self, line):
+        path = (self.home + "/.ssh/" + line)
+        for fn in glob.iglob(path):
+            if os.path.isfile(fn):
+                with open(fn, "r") as cf:
+                    return cf.readlines()
+
+    def is_host_line(self, line_lc):
+        return line_lc.startswith("host ") and "*" not in line_lc and "keyalgorithms" not in line_lc
+
     def parse_known_hosts(self):
-        home = expanduser("~")
         hosts = []
         host_regex = re.compile("^[a-zA-Z0-9\\-\\.]*(?=(,.*)*\\s)")
 
         try:
-            with open(home + "/.ssh/known_hosts", "r") as known_hosts:
+            with open(self.home + "/.ssh/known_hosts", "r") as known_hosts:
                 for line in known_hosts:
                     line_lc = line.lower()
                     match = host_regex.match(line_lc)
@@ -72,12 +101,11 @@ class SshExtension(Extension):
     def launch_terminal(self, addr):
         logger.debug("Launching connection " + addr)
         shell = os.environ["SHELL"]
-        home = expanduser("~")
 
         cmd = self.terminal_cmd.replace("%SHELL", shell).replace("%CONN", addr)
 
         if self.terminal:
-            subprocess.Popen([self.terminal, self.terminal_arg, cmd], cwd=home)
+            subprocess.Popen([self.terminal, self.terminal_arg, cmd], cwd=self.home)
 
 class ItemEnterEventListener(EventListener):
 
@@ -97,6 +125,8 @@ class PreferencesUpdateEventListener(EventListener):
             extension.terminal_cmd = event.new_value
         elif event.id == "ssh_launcher_use_known_hosts":
             extension.use_known_hosts = event.new_value
+        elif event.id == "ssh_launcher_dedup_by_hostname":
+            extension.dedup_by_hostname = event.new_value
 
 class PreferencesEventListener(EventListener):
 
@@ -105,6 +135,7 @@ class PreferencesEventListener(EventListener):
         extension.terminal_arg = event.preferences["ssh_launcher_terminal_arg"]
         extension.terminal_cmd = event.preferences["ssh_launcher_terminal_cmd"]
         extension.use_known_hosts = event.preferences["ssh_launcher_use_known_hosts"]
+        extension.dedup_by_hostname = event.preferences["ssh_launcher_dedup_by_hostname"]
 
 class KeywordQueryEventListener(EventListener):
 
@@ -112,11 +143,19 @@ class KeywordQueryEventListener(EventListener):
         icon = "images/icon.png"
         items = []
         arg = event.get_argument()
-        hosts = extension.parse_ssh_config()
-        if extension.use_known_hosts == "True":
-            hosts += extension.parse_known_hosts()
 
-        hosts = list(dict.fromkeys(hosts))
+        hosts = extension.parse_ssh_config()
+
+        if extension.use_known_hosts == "True":
+            known_hosts = extension.parse_known_hosts()
+
+            if extension.dedup_by_hostname == "True":
+                hostnames = map(lambda x: x["hostname"], hosts)
+                known_hosts = filter(lambda x: not x in hostnames, known_hosts)
+
+            hosts += map(lambda x: {"host": x}, known_hosts)
+
+        hosts = list(map(lambda x: x["host"], hosts))
         hosts.sort()
 
         if arg is not None and len(arg) > 0:

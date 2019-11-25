@@ -53,6 +53,23 @@
 			}
 		],
 		"default_value": "True"
+	},
+	{
+		"id": "ssh_launcher_dedup_by_hostname",
+		"type": "select",
+		"name": "Dedupe by hostname",
+		"description": "Prefer entries in ~/.ssh/config if the same hostname is found in known_hosts",
+		"options": [
+			{
+				"value": "True",
+				"text": "Yes"
+			},
+			{
+				"value": "False",
+				"text": "No"
+			}
+		],
+		"default_value": "False"
 	}
   ]
 }
