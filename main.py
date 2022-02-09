@@ -77,11 +77,9 @@ class SshExtension(Extension):
         logger.debug("Launching connection " + addr)
         shell = os.environ["SHELL"]
         home = expanduser("~")
-
-        cmd = self.terminal_cmd.replace("%SHELL", shell).replace("%CONN", addr)
-
+        cmd = self.terminal + " " + self.terminal_arg + " " + self.terminal_cmd.replace("%SHELL",  shell).replace("%CONN", addr)
         if self.terminal:
-            subprocess.Popen([self.terminal, self.terminal_arg, cmd], cwd=home)
+            subprocess.Popen(shlex.split(cmd))
 
 class ItemEnterEventListener(EventListener):
 
